@@ -10,7 +10,7 @@
 
 #define MAX_WAIT_MSECS 30*1000
 
-int main(int argc, char **argv);
+int main(void);
 int blocking_send(char *local_fn, char *remote_path, char *host, long port);
 int asynch_send(char *local_fn, char *remote_path, char *host, long port);
 void init_single(CURL *curl, FILE *local_fd, long port, char *dest, curl_off_t f_size);
