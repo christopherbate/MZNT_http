@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <pthread.h>
 
+#include "http-client-helper.h"
 #define MAX_WAIT_MSECS 30*1000
 #define MINIMAL_PROGRESS_FUNCTIONALITY_INTERVAL 3
 
@@ -45,5 +46,6 @@ int asynch_send(char *local_fn, char *remote_path);
 void *send_worker(void *arg);
 int curl_init(char *host, long port);
 int curl_destroy();
+int cancel_send();
 
 #endif /* http_client_h */
