@@ -16,11 +16,18 @@ struct progress {
     CURL *curl;
 };
 
+// Curl multi structure
+CURLM *cm;
+// Curl easy structure
+CURL *curl;
+struct progress curl_progress;
+
+char *remote_base_url;
+char *full_remote_path;
+
 int main(void);
 int blocking_send(char *local_fn, char *remote_path, char *host, long port);
-int asynch_send(char *local_fn, char *remote_path, char *host, long port);
-void init_single(CURL *curl, FILE *local_fd, long port, char *dest, curl_off_t f_size, struct progress *prog);
-int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow);
-void create_full_path(char *remote_path, char *host, char **dest);
+int asynch_send(char *local_fn, char *remote_path);
+void curl_init(char *host, long port);
 
 #endif /* http_client_h */

@@ -20,8 +20,11 @@ class Handler(BaseHTTPRequestHandler):
         else:
             path = '.' + path
             length = int(self.headers['Content-Length'])
+            
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'wb') as f:
                 f.write(self.rfile.read(length))
+            
             #self.send_response(201, "Created") 
             #self.handle_expect_100()
             response = bytes("This is the response.", "utf-8")
