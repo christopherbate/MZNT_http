@@ -149,6 +149,13 @@ int curl_init(char *host, long port) {
 }
 
 int curl_destroy() {
+    pthread_mutex_lock(&send_lock);
+    if (in_progress) {
+        fprintf(stderr, "error: Cannot destroy, transfer in progress\n");
+        return -1;
+    }
+    pthread_mutex_unlock(&send_lock);
+    
     curl_easy_cleanup(curl);
     curl_multi_cleanup(cm);
 
