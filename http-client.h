@@ -7,6 +7,7 @@
 #include <string.h>
 #include <curl/curl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #define MAX_WAIT_MSECS 30*1000
 #define MINIMAL_PROGRESS_FUNCTIONALITY_INTERVAL 3
@@ -22,12 +23,15 @@ CURLM *cm;
 CURL *curl;
 struct progress curl_progress;
 
+FILE *curr_fd;
+
 char *remote_base_url;
 char *full_remote_path;
 
 int main(void);
 int blocking_send(char *local_fn, char *remote_path, char *host, long port);
 int asynch_send(char *local_fn, char *remote_path);
-void curl_init(char *host, long port);
+int curl_init(char *host, long port);
+int curl_destroy();
 
 #endif /* http_client_h */

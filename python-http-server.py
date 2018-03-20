@@ -25,13 +25,16 @@ class Handler(BaseHTTPRequestHandler):
             with open(path, 'wb') as f:
                 f.write(self.rfile.read(length))
             
+            self.protocol_version = 'HTTP/1.1'
             #self.send_response(201, "Created") 
             #self.handle_expect_100()
-            response = bytes("This is the response.", "utf-8")
+            #response = bytes("This is the response.", "utf-8")
             self.send_response(200) #create header
-            self.send_header("Content-Length", str(len(response)))
+            #self.send_header("Content-Length", str(len(response)))
+            self.send_header("Content-Length", 0)
             self.end_headers()
-            self.wfile.write(response) #send response
+            
+            #self.wfile.write(response) #send response
 
 def run(server_class=HTTPServer, handler_class=Handler, port=8888):
     server_address = ('', port)
