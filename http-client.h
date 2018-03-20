@@ -8,6 +8,7 @@
 #include <curl/curl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define MAX_WAIT_MSECS 30*1000
 #define MINIMAL_PROGRESS_FUNCTIONALITY_INTERVAL 3
@@ -15,6 +16,11 @@
 struct progress {
     double lastruntime;
     CURL *curl;
+};
+
+struct req_info {
+    char *local_fn;
+    char *remote_path;
 };
 
 // Curl multi structure
@@ -28,7 +34,8 @@ FILE *curr_fd;
 char *remote_base_url;
 char *full_remote_path;
 
-int main(void);
+pthread_mutex_t in_progress_lock;
+
 int blocking_send(char *local_fn, char *remote_path, char *host, long port);
 int asynch_send(char *local_fn, char *remote_path);
 int curl_init(char *host, long port);

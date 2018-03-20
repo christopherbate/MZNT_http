@@ -6,15 +6,6 @@ int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
 int create_full_path(char *remote_path);
 int init_file_upload(char *local_fn, char *remote_path);
 
-int main(void) {
-    //return blocking_send("test.bin", "output.bin", "http://localhost/", 8888);
-    curl_init("http://localhost/", 8888);
-    asynch_send("test.bin", "testdir/output.bin");
-    sleep(3);
-    asynch_send("test.bin", "anotherdir/bn.bin");
-    return curl_destroy();
-}
-
 int curl_init(char *host, long port) {
     // Global curl initialization
     // Not thread safe, must be called once
