@@ -4,31 +4,43 @@ int set_global_opts(CURL *curl, long port);
 int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
                   curl_off_t ultotal, curl_off_t ulnow);
 int create_full_path(char *remote_path);
-int init_file_upload(char *local_fn, char *remote_path);
+int init_file_upload(CURL *curl, char *local_fn, char *remote_path);
 
 int curl_init(char *host, long port) {
+    remote_base_url = host;
+    remote_port = port;
+    // Realloc treats null pointer as normal malloc
+    full_remote_path = NULL;
+    
     // Global curl initialization
     // Not thread safe, must be called once
     curl_global_init(CURL_GLOBAL_ALL);
 
-    // Initialize multi, single
-    cm = curl_multi_init();
     curl = curl_easy_init();
     if (curl == NULL) {
         fprintf(stderr, "Curl easy init failed\n");
         return -1;
     }
+    if (set_global_opts(curl, remote_port) < 0)
+        return -1; 
+    
+    // Initialize multi, single
+    cm = curl_multi_init();
+    if (cm == NULL) {
+        fprintf(stderr, "Curl multi init failed\n");
+        return -1;
+    }
 
+    /*
     curl_progress.lastruntime = 0;
     curl_progress.curl = curl;
-
-    remote_base_url = host;
-    // Realloc treats null pointer as normal malloc
-    full_remote_path = NULL;
+    */
    
-    // Initialize global curl easy struct
-    if (set_global_opts(curl, port) < 0)
-        return -1;
+    // File lock declarations
+    pthread_mutex_init(&send_lock, NULL);
+    // Thread flag initialization
+    in_progress = 0;
+    cancel_flag = 0;
 
     return 0;
 }
@@ -42,15 +54,52 @@ int curl_destroy() {
     return 0;
 }
 
-// Code framework from https://gist.github.com/clemensg/4960504
 int asynch_send(char *local_fn, char *remote_path) {
+    // Check to make sure more than one simultaneous transfer doesn't occur
+    pthread_mutex_lock(&send_lock);
+    printf("%d\n", in_progress);
+    if (in_progress) {
+        fprintf(stderr, "error: attempted to start second transfer\n");
+        return -1;
+    }
+    in_progress = 1;
+    pthread_mutex_unlock(&send_lock);
+    
+    pthread_t id;
+
+    // Set thread to detached
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    // Create, init struct
+    struct req_info *tmp = malloc(sizeof(struct req_info));
+    tmp->local_fn = local_fn;
+    tmp->remote_path = remote_path;
+
+    // Create thread
+    pthread_create(&id, &attr, send_worker, (void *)tmp);  
+    return 0; 
+}
+
+void *send_worker(void *arg) {
+    struct req_info *ri = (struct req_info*)arg;
+
+
+    sleep(3);
     CURLMsg *msg=NULL;
     CURLcode res;
     int still_running=0, msgs_left=0;
     double speed_upload, total_time;
-	
-    if (init_file_upload(local_fn, remote_path) < 0)
-        return -1;
+    
+    //CURL *curl;
+    // Initialize global curl easy struct
+    if (init_file_upload(curl, ri->local_fn, ri->remote_path) < 0)
+        return (void*)-1;
+
+    //int i = curl_easy_perform(curl);
+    //fprintf(stderr, "error: curl_multi_wait() returned %s\n", curl_easy_strerror(i));
+    //curl_easy_cleanup(curl);
     
     // Add single handle to multi
     curl_multi_add_handle(cm, curl); 
@@ -61,10 +110,25 @@ int asynch_send(char *local_fn, char *remote_path) {
     do {
         int numfds=0;
         int res_code = curl_multi_wait(cm, NULL, 0, MAX_WAIT_MSECS, &numfds);
-        if(res_code != CURLM_OK) {
-            fprintf(stderr, "error: curl_multi_wait() returned %d\n", res_code);
-            return EXIT_FAILURE;
+        //printf("%d\n", res_code); 
+        pthread_mutex_lock(&send_lock);
+        if(res_code != CURLM_OK && cancel_flag != 1) {
+            pthread_mutex_unlock(&send_lock);
+            fprintf(stderr, "error: curl_multi_wait() returned %s\n", curl_multi_strerror(res_code));
+            
+            // Removing handle mid-transfer will abort request
+            curl_multi_remove_handle(cm, curl);
+            
+            // Cleanup
+            fclose(curr_fd);
+            pthread_mutex_lock(&send_lock);
+            in_progress = 0;
+            pthread_mutex_unlock(&send_lock);
+            free(ri);
+            
+            return (void*)-1;
         }
+        pthread_mutex_unlock(&send_lock);
         curl_multi_perform(cm, &still_running);
 
     } while(still_running);
@@ -78,7 +142,7 @@ int asynch_send(char *local_fn, char *remote_path) {
                 continue;
             }
             else {
-                /* now extract transfer info */ 
+                // now extract transfer info
                 curl_easy_getinfo(curl, CURLINFO_SPEED_UPLOAD, &speed_upload);
                 curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &total_time);
 
@@ -91,8 +155,17 @@ int asynch_send(char *local_fn, char *remote_path) {
         }
     }
     curl_multi_remove_handle(cm, curl);
+    
     fclose(curr_fd);
-    return EXIT_SUCCESS; 
+    
+    pthread_mutex_lock(&send_lock);
+    in_progress = 0;
+    pthread_mutex_unlock(&send_lock);
+
+    printf("thread done\n");
+
+    free(ri);
+    pthread_exit(NULL);
 }
 
 // Function for onetime curl struct setup
@@ -105,8 +178,8 @@ int set_global_opts(CURL *curl, long port) {
     curl_easy_setopt(curl, CURLOPT_PUT, 1L);
 
     // Progress callback options
- 	curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, info_callback);
-    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &curl_progress);
+ 	//curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, info_callback);
+    //curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &curl_progress);
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
 
     /* enable verbose for easier tracing */ 
@@ -115,7 +188,7 @@ int set_global_opts(CURL *curl, long port) {
     return 0;
 }
 
-int init_file_upload(char *local_fn, char *remote_path) {
+int init_file_upload(CURL *curl, char *local_fn, char *remote_path) {
     struct stat file_info;
     create_full_path(remote_path);
     
@@ -145,32 +218,5 @@ int create_full_path(char *remote_path) {
     strcat(full_remote_path, remote_path);
     tmp = NULL;
 
-    return 0;
-}
-
-// Callback from progressfunc.c example
-int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
-                  curl_off_t ultotal, curl_off_t ulnow) {
-	// Recast struct to progress
-	struct progress *myp = (struct progress *)p;
-	CURL *curl = myp->curl;
-	double curtime = 0;
-
-	curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &curtime);
-
-	/* under certain circumstances it may be desirable for certain functionality
-	 to only run every N seconds, in order to do this the transaction time can
-	 be used */ 
-	if ((curtime - myp->lastruntime) >= MINIMAL_PROGRESS_FUNCTIONALITY_INTERVAL) {
-		myp->lastruntime = curtime;
-		fprintf(stderr, "TOTAL TIME: %f \r\n", curtime);
-	}
-    
-    /*
-	fprintf(stderr, "UP: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
-		  "  DOWN: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
-		  "\r\n",
-		  ulnow, ultotal, dlnow, dltotal);
-	*/
     return 0;
 }

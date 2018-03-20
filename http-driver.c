@@ -3,7 +3,10 @@
 int main(void) {
     curl_init("http://localhost/", 8888);
     asynch_send("test.bin", "testdir/output.bin");
-    sleep(3);
+    printf("done\n");
     asynch_send("test.bin", "anotherdir/bn.bin");
+    
+    sleep(10);
+
     return curl_destroy();
 }
