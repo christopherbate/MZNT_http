@@ -17,4 +17,5 @@ http-driver: http-client.o http-driver.o
 
 clean:
 	rm -rf http-driver
-
+	rm -rf http-driver.o
+	rm -rf http-client.o
