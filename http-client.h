@@ -10,7 +10,6 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#include "http-client-helper.h"
 #define MAX_WAIT_MSECS 30*1000
 #define MINIMAL_PROGRESS_FUNCTIONALITY_INTERVAL 3
 
@@ -25,6 +24,7 @@ struct progress {
 //struct progress curl_progress;
 
 // Parameter to worker function
+/*
 struct req_info {
     char *local_fn;
     char *remote_path;
@@ -43,7 +43,8 @@ char *full_remote_path;
 
 int in_progress;
 int cancel_flag;
-pthread_mutex_t send_lock;
+pthread_mutex_t send_lock
+*/
 
 /*
     REQUIRES: 
@@ -58,7 +59,7 @@ pthread_mutex_t send_lock;
         0 on success
         -1 if other transfer already in progress
 */
-int asynch_send(char *local_fn, char *remote_path);
+int asynch_send(char *filename, char *rem_path);
 
 /*
     REQUIRES:
@@ -73,7 +74,7 @@ int asynch_send(char *local_fn, char *remote_path);
     RETURNS:
         -1 if exiting prematurely. Detatched thread, returns will not be received
 */
-void *send_worker(void *arg);
+//void *send_worker(void *arg);
 
 /*
     REQUIRES:

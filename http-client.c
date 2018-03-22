@@ -1,6 +1,27 @@
 #include "http-client.h"
 
-int asynch_send(char *local_fn, char *remote_path) {
+static CURLM *cm;
+static CURL *curl;
+
+static FILE *curr_fd;
+
+static char *local_fn;
+static char *remote_path;
+
+static int remote_port;
+static char *remote_base_url;
+static char *full_remote_path;
+
+static int in_progress;
+static int cancel_flag;
+static pthread_mutex_t send_lock;
+
+void *send_worker();
+int set_global_opts();
+int init_file_upload();
+int create_full_path();
+
+int asynch_send(char *filename, char *rem_path) {
     // Check to make sure more than one simultaneous transfer doesn't occur
     pthread_mutex_lock(&send_lock);
     printf("%d\n", in_progress);
@@ -11,33 +32,41 @@ int asynch_send(char *local_fn, char *remote_path) {
     in_progress = 1;
     pthread_mutex_unlock(&send_lock);
     
-    pthread_t id;
+    local_fn = filename;
+    remote_path = rem_path;
 
+    pthread_t id;
     // Set thread to detached
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-    // Create, init struct
-    struct req_info *tmp = malloc(sizeof(struct req_info));
-    tmp->local_fn = local_fn;
-    tmp->remote_path = remote_path;
-
     // Create thread
-    pthread_create(&id, &attr, send_worker, (void *)tmp);  
+    pthread_create(&id, &attr, send_worker, NULL);  
     return 0; 
 }
 
-void *send_worker(void *arg) {
-    struct req_info *ri = (struct req_info*)arg;
+/*
+    REQUIRES:
+        asynch_send must create thread to run send_worker
+        arg, cast to req_info struct. Contains local and remote path info
 
+    MODIFIES:
+        cm, through curl_multi add and remove handle. Reentrant
+        in_progress, cancel_flag for flagging transfer status
+        curl, curr_fd, full_remote_path through init_file_upload
+    
+    RETURNS:
+        -1 if exiting prematurely. Detatched thread, returns will not be received
+*/
+void *send_worker() {
     CURLMsg *msg=NULL;
     CURLcode res;
     int still_running=0, msgs_left=0;
     double speed_upload, total_time;
     
     // Initialize global curl easy struct
-    if (init_file_upload(curl, ri->local_fn, ri->remote_path) < 0)
+    if (init_file_upload() < 0)
         return (void*)-1;
 
     // Add single handle to multi
@@ -49,7 +78,6 @@ void *send_worker(void *arg) {
     do {
         int numfds=0;
         int res_code = curl_multi_wait(cm, NULL, 0, MAX_WAIT_MSECS, &numfds);
-        //printf("%d\n", res_code); 
         pthread_mutex_lock(&send_lock);
         if(res_code != CURLM_OK && cancel_flag != 1) {
             pthread_mutex_unlock(&send_lock);
@@ -64,8 +92,6 @@ void *send_worker(void *arg) {
             in_progress = 0;
             cancel_flag = 0;
             pthread_mutex_unlock(&send_lock);
-            free(ri);
-            
             return (void*)-1;
         }
         pthread_mutex_unlock(&send_lock);
@@ -105,7 +131,6 @@ void *send_worker(void *arg) {
 
     printf("thread done\n");
 
-    free(ri);
     pthread_exit(NULL);
 }
 
@@ -124,7 +149,7 @@ int curl_init(char *host, long port) {
         fprintf(stderr, "Curl easy init failed\n");
         return -1;
     }
-    if (set_global_opts(curl, remote_port) < 0)
+    if (set_global_opts() < 0)
         return -1; 
     
     // Initialize multi, single
@@ -171,3 +196,90 @@ int cancel_send() {
     pthread_mutex_unlock(&send_lock);
     return 0;
 }
+
+/*
+    REQUIRES:
+        Valid (initialized) pointer to curl struct
+        port number of server
+
+    MODIFIES:
+        curl
+
+    RETURNS:
+        0 on success
+*/
+int set_global_opts() { 
+    /* upload to this place */ 
+    curl_easy_setopt(curl, CURLOPT_PORT, remote_port);
+    /* tell it to "upload" to the URL */ 
+    curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+    curl_easy_setopt(curl, CURLOPT_PUT, 1L);
+
+    // Progress callback options
+ 	//curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, info_callback);
+    //curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &curl_progress);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+
+    /* enable verbose for easier tracing */ 
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+
+    return 0;
+}
+
+/*
+    REQUIRES:
+        Valid (initialized) pointer to curl struct
+        curl struct pointer, local_fn, remote_path, full_remote_path
+
+    MODIFIES:
+        curr_fd, curl struct, full_remote_path (through create_full_path)
+
+    RETURNS:
+        0 on success
+        -1 on bad file open, fstat call
+*/
+int init_file_upload() {
+    struct stat file_info;
+    create_full_path();
+    
+    curr_fd = fopen(local_fn, "rb"); /* open file to upload */ 
+    if(!curr_fd)
+        return -1; /* can't continue */ 
+    /* to get the file size */ 
+    if(fstat(fileno(curr_fd), &file_info) != 0)
+        return -1; /* can't continue */ 
+    
+    curl_easy_setopt(curl, CURLOPT_URL, full_remote_path);
+    /* set where to read from */ 
+    curl_easy_setopt(curl, CURLOPT_READDATA, curr_fd);
+    /* and give the size of the upload (optional) */ 
+    curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, file_info.st_size);
+
+    return 0;
+}
+
+/*
+    REQUIRES:
+        successful completion of curl_init (for remote base url)
+        remote_base_url, remote_path, full_remote_path
+
+    MODIFIES:
+        full_remote_path
+
+    RETURNS:
+        0 on success
+        -1 for bad realloc
+*/
+int create_full_path() {
+    char* tmp = (char *)realloc(full_remote_path, strlen(remote_base_url) + strlen(remote_path) + 1);
+
+    if (tmp == NULL)
+        return -1;
+    // Construct full destination using global base url
+    full_remote_path = strcpy(tmp, remote_base_url);
+    strcat(full_remote_path, remote_path);
+    tmp = NULL;
+
+    return 0;
+}
+
