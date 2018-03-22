@@ -10,7 +10,7 @@ static char *remote_path;
 
 static int remote_port;
 static char *remote_base_url;
-static char *full_remote_path;
+static sds full_remote_path;
 
 static int in_progress;
 static int cancel_flag;
@@ -120,10 +120,11 @@ void *send_worker() {
             fprintf(stderr, "error: after curl_multi_info_read(), CURLMsg=%d\n", msg->msg);
         }
     }
+    // Cleanup
     curl_multi_remove_handle(cm, curl);
     
     fclose(curr_fd);
-    
+    sdsfree(full_remote_path);
     pthread_mutex_lock(&send_lock);
     in_progress = 0;
     cancel_flag = 0;
@@ -183,8 +184,6 @@ int curl_destroy() {
     
     curl_easy_cleanup(curl);
     curl_multi_cleanup(cm);
-
-    free(full_remote_path);
 
     return 0;
 }
@@ -271,15 +270,8 @@ int init_file_upload() {
         -1 for bad realloc
 */
 int create_full_path() {
-    char* tmp = (char *)realloc(full_remote_path, strlen(remote_base_url) + strlen(remote_path) + 1);
-
-    if (tmp == NULL)
-        return -1;
-    // Construct full destination using global base url
-    full_remote_path = strcpy(tmp, remote_base_url);
-    strcat(full_remote_path, remote_path);
-    tmp = NULL;
-
+    full_remote_path = sdsnew(remote_base_url);//strcpy(tmp, remote_base_url);
+    full_remote_path = sdscat(full_remote_path, remote_path);
     return 0;
 }
 

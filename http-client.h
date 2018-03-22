@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <pthread.h>
+#include "sds.h"
 
 #define MAX_WAIT_MSECS 30*1000
 #define MINIMAL_PROGRESS_FUNCTIONALITY_INTERVAL 3
