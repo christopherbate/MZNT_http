@@ -14,39 +14,6 @@
 #define MAX_WAIT_MSECS 30*1000
 #define MINIMAL_PROGRESS_FUNCTIONALITY_INTERVAL 3
 
-
-// Only necessary with transfer callback
-/*
-struct progress {
-    double lastruntime;
-    CURL *curl;
-};
-*/
-//struct progress curl_progress;
-
-// Parameter to worker function
-/*
-struct req_info {
-    char *local_fn;
-    char *remote_path;
-};
-
-// Curl multi structure
-CURLM *cm;
-// Curl easy structure
-CURL *curl;
-
-FILE *curr_fd;
-
-int remote_port;
-char *remote_base_url;
-char *full_remote_path;
-
-int in_progress;
-int cancel_flag;
-pthread_mutex_t send_lock
-*/
-
 /*
     REQUIRES: 
         Successful completion of curl_init()
@@ -109,10 +76,25 @@ int curl_destroy();
         Successful completion of curl_init
 
     MODIFIES:
+        Nothing
+    
+    RETURNS:
+        Number of bytes written to this point on success
+            NOTE: can legally be equal to num bytes in file
+        -1 if transfer not currently in progress
+*/
+curl_off_t status_send();
+
+/*
+    REQUIRED:
+        Successful completion of curl_init
+
+    MODIFIES:
         cancel_flag
     
     RETURNS:
-        0 on success
+        0 on success (NOTE: cancel currently not guaranteed to actually cancel,
+                      will only cancel a transfer actually occuring)
 */
 int cancel_send();
 

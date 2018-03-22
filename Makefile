@@ -26,3 +26,4 @@ clean:
 	rm -rf http-client-helper.h.gch
 	rm -rf sds.o
 	rm -rf sds.h.gch
+	rm -rf sdsalloc.h.gch

@@ -1,5 +1,13 @@
 #include "http-client.h"
 
+struct progress {
+	double lastruntime;
+    curl_off_t curr_upload;
+    curl_off_t upload_max;
+};
+
+static struct progress curl_progress;
+
 static CURLM *cm;
 static CURL *curl;
 
@@ -17,6 +25,8 @@ static int cancel_flag;
 static pthread_mutex_t send_lock;
 
 void *send_worker();
+int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
+                  curl_off_t ultotal, curl_off_t ulnow);
 int set_global_opts();
 int init_file_upload();
 int create_full_path();
@@ -159,12 +169,11 @@ int curl_init(char *host, long port) {
         fprintf(stderr, "Curl multi init failed\n");
         return -1;
     }
-
-    /*
+    
     curl_progress.lastruntime = 0;
-    curl_progress.curl = curl;
-    */
-   
+    curl_progress.curr_upload = 0;
+    curl_progress.upload_max = 0;
+
     // File lock declarations
     pthread_mutex_init(&send_lock, NULL);
     // Thread flag initialization
@@ -188,11 +197,63 @@ int curl_destroy() {
     return 0;
 }
 
+curl_off_t status_send() { 
+    curl_off_t ret = -1;
+    pthread_mutex_lock(&send_lock);
+    if (in_progress) {
+        ret = curl_progress.curr_upload;
+    }
+    pthread_mutex_unlock(&send_lock);
+    return ret;
+}
+
 int cancel_send() {
     pthread_mutex_lock(&send_lock);
     if (in_progress)
         cancel_flag = 1;
     pthread_mutex_unlock(&send_lock);
+    return 0;
+}
+
+// Callback structure progressfunc.c example
+/*
+    REQUIRES:
+        Successful curl_init
+        Transfer to be in progress (called as callback to multi perform)
+
+    MODIFIES:
+        curl_progress.lastruntime
+        curl_progress.curr_upload
+
+    RETURNS:
+        0 on success
+*/
+int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
+                  curl_off_t ultotal, curl_off_t ulnow) {
+    // Recast struct to progress
+    struct progress *myp = (struct progress *)p;
+    double curtime = 0;
+
+    curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &curtime);
+
+    /* under certain circumstances it may be desirable for certain functionality
+     to only run every N seconds, in order to do this the transaction time can
+     be used */ 
+    if ((curtime - myp->lastruntime) >= MINIMAL_PROGRESS_FUNCTIONALITY_INTERVAL) {
+        myp->lastruntime = curtime;
+        fprintf(stderr, "TOTAL TIME: %f \r\n", curtime);
+    }
+    
+    pthread_mutex_lock(&send_lock);
+    myp->curr_upload = ulnow;
+    pthread_mutex_unlock(&send_lock);
+
+    /*
+    fprintf(stderr, "UP: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
+          "  DOWN: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
+          "\r\n",
+          ulnow, ultotal, dlnow, dltotal);
+    */
     return 0;
 }
 
@@ -215,8 +276,8 @@ int set_global_opts() {
     curl_easy_setopt(curl, CURLOPT_PUT, 1L);
 
     // Progress callback options
- 	//curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, info_callback);
-    //curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &curl_progress);
+ 	curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, info_callback);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &curl_progress);
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
 
     /* enable verbose for easier tracing */ 
@@ -232,6 +293,7 @@ int set_global_opts() {
 
     MODIFIES:
         curr_fd, curl struct, full_remote_path (through create_full_path)
+        curl_progress.upload_max
 
     RETURNS:
         0 on success
@@ -254,6 +316,10 @@ int init_file_upload() {
     /* and give the size of the upload (optional) */ 
     curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, file_info.st_size);
 
+    // Set upload max value from file size
+    pthread_mutex_lock(&send_lock);
+    curl_progress.upload_max = (curl_off_t)file_info.st_size;
+    pthread_mutex_unlock(&send_lock);
     return 0;
 }
 
