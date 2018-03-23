@@ -2,15 +2,50 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
 
 class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self._set_headers()
-        self.wfile.write("<html><body><h1>hi!</h1></body></html>")
+    path_dict = {}
+    prev_key = ''
+    
+    def file_handler(path):
+        name = re.split(r'[/]+', path)[-1]
+        # Split name on both periods and underscores
+        name_list = re.split(r'[._]+', name)
+        if 'IF' not in name_list[0] or len(name_list) < 2:
+            continue
+        
+        # key is filename, without extension & pre/post
+        key = name_list[0] + '_' + name_list[1] + '_' + name_list[2]
+        if key not in path_dict:
+            path_dict[key] = []
+            path_dict[key].append(name)
+            if prev_key != '':
+                # Dir name is node_data.*
+                dir_name = prev_key
+                subpath = mz_dir + dir_name
+                os.system('mkdir ' + subpath)
+                
+                # Move all files with this naming convention into new directory
+                # mv should be atomic
+                for f in path_dict[prev_key]:
+                    os.system('mv ' + mz_dir + f + ' ' + subpath + '/' + prev_key)
+                
+                # cp scripts into new directory
+                os.system('cp testing_pipeline.sh ' + subpath + '/test.sh')
+                #os.system('cp concatfiles.sh ./' +  subpath + '/concatfiles.sh')
+                os.system('cp unpacker ./' + subpath + '/unpacker')
+                
+                # Code to call shell script with command line arguments
+                subprocess.Popen('./test.sh ' + prev_key + ' ' + sys.argv[1] + ' ' +  sys.argv[2], shell=True, cwd=subpath)
+            prev_key = key
 
+def do_GET(self):
+    self._set_headers()
+    self.wfile.write("<html><body><h1>hi!</h1></body></html>")
+    
     def do_POST(self):
         # Doesn't do anything with posted data
         self._set_headers()
         self.wfile.write("<html><body><h1>POST!</h1></body></html>")
-        
+    
     def do_PUT(self):
         path = self.path
         if path.endswith('/'):
@@ -24,19 +59,21 @@ class Handler(BaseHTTPRequestHandler):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'wb') as f:
                 f.write(self.rfile.read(length))
+        
+            file_handler(path)
             
             self.protocol_version = 'HTTP/1.1'
-            #self.send_response(201, "Created") 
+            #self.send_response(201, "Created")
             #self.handle_expect_100()
             #response = bytes("This is the response.", "utf-8")
             self.send_response(200) #create header
             #self.send_header("Content-Length", str(len(response)))
             self.send_header("Content-Length", 0)
-            self.end_headers()
-            
-            #self.wfile.write(response) #send response
+    self.end_headers()
 
-def run(server_class=HTTPServer, handler_class=Handler, port=8888):
+#self.wfile.write(response) #send response
+
+def run(server_class=HTTPServer, handler_class=Handler, port=1337):
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
     print('Starting httpd...')
@@ -48,3 +85,4 @@ if __name__ == "__main__":
         run(port=int(argv[1]))
     else:
         run()
+
