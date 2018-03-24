@@ -13,8 +13,8 @@ static CURL *curl;
 
 static FILE *curr_fd;
 
-static char *local_fn;
-static char *remote_path;
+static sds local_fn;
+static sds remote_path;
 
 static int remote_port;
 static char *remote_base_url;
@@ -31,10 +31,22 @@ int set_global_opts();
 int init_file_upload();
 int create_full_path();
 
+static off_t GetFileSize( int fd ) {
+	// Get the size of the input file.
+	struct stat stat_buf;
+	int res;
+	res = fstat( fd, &stat_buf );
+	if( res < 0 ){
+		UniError("Failed to get file size.");
+	}
+
+	return stat_buf.st_size;
+}
+
 int asynch_send(char *filename, char *rem_path) {
     // Check to make sure more than one simultaneous transfer doesn't occur
     pthread_mutex_lock(&send_lock);
-    printf("%d\n", in_progress);
+    printf("Current upload status: %d\n", in_progress);
     if (in_progress) {
         fprintf(stderr, "error: attempted to start second transfer\n");
         return -1;
@@ -42,8 +54,8 @@ int asynch_send(char *filename, char *rem_path) {
     in_progress = 1;
     pthread_mutex_unlock(&send_lock);
     
-    local_fn = filename;
-    remote_path = rem_path;
+    local_fn = sdsnew(filename);
+    remote_path = sdsnew(rem_path);
 
     pthread_t id;
     // Set thread to detached
@@ -75,9 +87,13 @@ void *send_worker() {
     int still_running=0, msgs_left=0;
     double speed_upload, total_time;
     
+    printf("Executing upload worker.\n");
+
     // Initialize global curl easy struct
-    if (init_file_upload() < 0)
+    if (init_file_upload() < 0) {
+    	printf("Init file upload failed.\n");
         return (void*)-1;
+    }
 
     // Add single handle to multi
     curl_multi_add_handle(cm, curl); 
@@ -135,9 +151,11 @@ void *send_worker() {
     
     fclose(curr_fd);
     sdsfree(full_remote_path);
+    sdsfree(local_fn);
     pthread_mutex_lock(&send_lock);
     in_progress = 0;
     cancel_flag = 0;
+    sdsfree(remote_path);
     pthread_mutex_unlock(&send_lock);
 
     printf("thread done\n");
@@ -303,13 +321,23 @@ int init_file_upload() {
     struct stat file_info;
     create_full_path();
     
+    printf("Local filename is %s\n", local_fn);
+
     curr_fd = fopen(local_fn, "rb"); /* open file to upload */ 
-    if(!curr_fd)
-        return -1; /* can't continue */ 
+    if(!curr_fd) {
+    	printf("Failed to open local file\n");
+        return -1; /* can't continue */
+    }
+
     /* to get the file size */ 
-    if(fstat(fileno(curr_fd), &file_info) != 0)
+    if(fstat(fileno(curr_fd), &file_info) != 0) {
+    	printf("Failed fstat.\n");
         return -1; /* can't continue */ 
+    }
     
+    printf("Full remote path is: %s\n", full_remote_path);
+    printf("Size is: %d\n", file_info.st_size);
+
     curl_easy_setopt(curl, CURLOPT_URL, full_remote_path);
     /* set where to read from */ 
     curl_easy_setopt(curl, CURLOPT_READDATA, curr_fd);
@@ -338,6 +366,7 @@ int init_file_upload() {
 int create_full_path() {
     full_remote_path = sdsnew(remote_base_url);//strcpy(tmp, remote_base_url);
     full_remote_path = sdscat(full_remote_path, remote_path);
+    printf("Full remote: %s\n", full_remote_path);
     return 0;
 }
 
