@@ -27,7 +27,7 @@
         0 on success
         -1 if other transfer already in progress
 */
-int asynch_send(char *filename, off_t f_offset, char *rem_path);
+int asynch_send(char *filename, curl_off_t f_offset, char *rem_path);
 
 /*
     REQUIRES:

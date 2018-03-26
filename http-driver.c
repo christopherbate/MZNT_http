@@ -13,8 +13,9 @@ int main(void) {
     }
     */
     sleep(5);
-    //asynch_send("test.bin", 200000, "anotherdir/bn.bin");
-    //printf("%d\n", cancel_send());
+    asynch_send("test.bin", 10000000, "anotherdir/bn.bin");
+    sleep(5);
+    asynch_send("test.bin", 40000000, "anotherdir/bn.bin");
     sleep(5);
     return curl_destroy();
 }
