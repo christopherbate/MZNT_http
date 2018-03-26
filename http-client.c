@@ -31,7 +31,7 @@ int set_global_opts();
 int init_file_upload(curl_off_t f_offset);
 int create_full_path();
 
-int asynch_send(char *filename, off_t f_offset, char *rem_path) {
+int asynch_send(char *filename, curl_off_t f_offset, char *rem_path) {
     // Check to make sure more than one simultaneous transfer doesn't occur
     pthread_mutex_lock(&send_lock);
     printf("Current upload status: %d\n", in_progress);
