@@ -22,4 +22,8 @@ matlab -r "addpath(genpath('${3}')); initProbeOnly('$(pwd)/${1}.GPS_L1'); exit()
 #matlab -nodisplay -nodesktop -r "addpath(genpath('${3}/aGNSS_SDR_vSMDC_TOW_estimated')); init('$(pwd)/${1}.GPS_L1'); exit();" >> ./${1}_log 2>&1
 #matlab -nodisplay -nodesktop -r "addpath(genpath('${3}/assisted_GNSS_SDR_vSMDC')); init('$(pwd)/${1}.GPS_L1'); exit();" >> ./${1}_log 2>&1
 
-#rm ${1}.*
+rm ${1}.GPS_L1
+rm ${1}.GPS_L2
+rm ${1}.GLO_L1
+rm ${1}.GLO_L2
+
