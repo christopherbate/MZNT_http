@@ -259,12 +259,14 @@ int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
     pthread_mutex_lock(&send_lock);
     myp->curr_upload = ulnow;
     pthread_mutex_unlock(&send_lock);
-
-    
-    fprintf(stderr, "UP: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
-          "  DOWN: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
-          "\r\n",
-          ulnow, ultotal, dlnow, dltotal);
+       
+    int debug = 0;
+    if (debug) {
+        fprintf(stderr, "UP: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
+              "  DOWN: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
+              "\r\n",
+              ulnow, ultotal, dlnow, dltotal); 
+    }
    
     return 0;
 }
