@@ -2,7 +2,8 @@
 
 int main(void) {
     curl_init("http://localhost/", 1337);
-    asynch_send("test.bin", "testdir/output.bin");
+    asynch_send("test.bin", 0, "testdir/output.bin");
+    /*
     unsigned long s;
     while (1) {
         s = (unsigned long)status_send();
@@ -10,9 +11,10 @@ int main(void) {
             break;
         printf("Uploaded %lu bytes\n", s);
     }
-    sleep(1);
-    asynch_send("test.bin", "anotherdir/bn.bin");
-    printf("%d\n", cancel_send());
+    */
+    sleep(5);
+    //asynch_send("test.bin", 200000, "anotherdir/bn.bin");
+    //printf("%d\n", cancel_send());
     sleep(5);
     return curl_destroy();
 }

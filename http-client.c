@@ -28,10 +28,10 @@ void *send_worker();
 int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
                   curl_off_t ultotal, curl_off_t ulnow);
 int set_global_opts();
-int init_file_upload();
+int init_file_upload(off_t f_offset);
 int create_full_path();
 
-int asynch_send(char *filename, char *rem_path) {
+int asynch_send(char *filename, off_t f_offset, char *rem_path) {
     // Check to make sure more than one simultaneous transfer doesn't occur
     pthread_mutex_lock(&send_lock);
     printf("Current upload status: %d\n", in_progress);
@@ -46,7 +46,7 @@ int asynch_send(char *filename, char *rem_path) {
     remote_path = sdsnew(rem_path);
     
     // Initialize global curl easy struct
-    if (init_file_upload() < 0) {
+    if (init_file_upload(f_offset) < 0) {
     	printf("Init file upload failed.\n");
         return -1;
     }
@@ -306,7 +306,7 @@ int set_global_opts() {
         0 on success
         -1 on bad file open, fstat call
 */
-int init_file_upload() {
+int init_file_upload(off_t f_offset) {
     struct stat file_info;
     create_full_path();
     
@@ -317,21 +317,27 @@ int init_file_upload() {
     	printf("Failed to open local file\n");
         return -1; /* can't continue */
     }
-
-    /* to get the file size */ 
+    
     if(fstat(fileno(curr_fd), &file_info) != 0) {
     	printf("Failed fstat.\n");
-        return -1; /* can't continue */ 
+        return -1;
     }
-    
+    //fseek(curr_fd, 0L, SEEK_END);
+    //off_t sz = ftell(curr_fd);
     printf("Full remote path is: %s\n", full_remote_path);
-    printf("Size is: %lu\n", (unsigned long)file_info.st_size);
+    printf("Size is: %lu\n", (unsigned long)(file_info.st_size - f_offset));
+    //printf("Size is: %lu\n", (unsigned long)(sz - f_offset));
+    
+    if(file_info.st_size < f_offset || fseek(curr_fd, f_offset, SEEK_SET) != 0) {
+        fprintf(stderr, "Failed fseek\n");
+        return -1;
+    }
 
     curl_easy_setopt(curl, CURLOPT_URL, full_remote_path);
     /* set where to read from */ 
     curl_easy_setopt(curl, CURLOPT_READDATA, curr_fd);
     /* and give the size of the upload (optional) */ 
-    curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, file_info.st_size);
+    curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, (file_info.st_size - f_offset));
 
     // Set upload max value from file size
     pthread_mutex_lock(&send_lock);

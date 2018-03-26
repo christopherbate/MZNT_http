@@ -62,12 +62,12 @@ class Handler(BaseHTTPRequestHandler):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             print("Attempting to write file.")
             with open(path, 'wb') as f:
-                data = self.rfile.read(10)
-                while(data):
-                    print(data)
-                    f.write(data)
-                    data = self.rfile.read(10)
-                #f.write(self.rfile.read(length))
+                #data = self.rfile.read(10)
+                #while(data):
+                #    print(data)
+                #    f.write(data)
+                #    data = self.rfile.read(10)
+                f.write(self.rfile.read(length))
             print("Done")
             #self.file_handler(path)
 
