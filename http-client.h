@@ -18,14 +18,15 @@
     REQUIRES: 
         Successful completion of curl_init()
         local_fn for local filename (can be relative or absolute path)
+        f_offset is requested offset into file, from beginning
         remote_path is path on server, not including host or port 
-    
+        
     MODIFIES: 
         in_progress to indicate transfer in progress
     
     RETURNS:
         0 on success
-        -1 if other transfer already in progress
+        -1 if other transfer already in progress, failed file init
 */
 int asynch_send(char *filename, curl_off_t f_offset, char *rem_path);
 

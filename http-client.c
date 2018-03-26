@@ -48,6 +48,11 @@ int asynch_send(char *filename, off_t f_offset, char *rem_path) {
     // Initialize global curl easy struct
     if (init_file_upload(f_offset) < 0) {
     	printf("Init file upload failed.\n");
+        
+        pthread_mutex_lock(&send_lock);
+        in_progress = 0;
+        pthread_mutex_unlock(&send_lock);
+
         return -1;
     }
 
@@ -297,6 +302,7 @@ int set_global_opts() {
     REQUIRES:
         Valid (initialized) pointer to curl struct
         curl struct pointer, local_fn, remote_path, full_remote_path
+        file offset argument
 
     MODIFIES:
         curr_fd, curl struct, full_remote_path (through create_full_path)
@@ -304,7 +310,7 @@ int set_global_opts() {
 
     RETURNS:
         0 on success
-        -1 on bad file open, fstat call
+        -1 on bad file open, offset greater than file size
 */
 int init_file_upload(curl_off_t f_offset) {
     create_full_path(); 
