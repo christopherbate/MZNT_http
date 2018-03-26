@@ -15,11 +15,11 @@ touch ./${1}_log
 echo "Running unpacker" >> ./${1}_log
 ./unpacker "./${1}" "./unpacked/output.bin" 0 >> ./${1}_log 2>&1
 
-matlab -nodisplay -nodesktop -r "addpath(genpath('${3}/GNSS_SDR_vSMDC')); init('$(pwd)/${1}.GPS_L1'); exit();" >> ./${1}_log 2>&1
+matlab -r "addpath(genpath('${3}')); initProbeOnly('$(pwd)/${1}.GPS_L1'); exit();" >> ./${1}_log 2>&1
 
 # aGNSS matlab calls
 #matlab -nodisplay -nodesktop -r "addpath(genpath('${3}/aGNSS_SDR_vSMDC_TOW_decoded')); init('$(pwd)/${1}.GPS_L1'); exit();" >> ./${1}_log 2>&1
 #matlab -nodisplay -nodesktop -r "addpath(genpath('${3}/aGNSS_SDR_vSMDC_TOW_estimated')); init('$(pwd)/${1}.GPS_L1'); exit();" >> ./${1}_log 2>&1
 #matlab -nodisplay -nodesktop -r "addpath(genpath('${3}/assisted_GNSS_SDR_vSMDC')); init('$(pwd)/${1}.GPS_L1'); exit();" >> ./${1}_log 2>&1
 
-rm ${1}.*
+#rm ${1}.*

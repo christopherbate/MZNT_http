@@ -1,42 +1,43 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import subprocess
 import os
 import re
 
 class Handler(BaseHTTPRequestHandler):
-    path_dict = {}
-    prev_key = ''
-
     def file_handler(self,path):
+        print("In file handler")
+        print(path)
         name = re.split(r'[/]+', path)[-1]
+        print(name)
         # Split name on both periods and underscores
         name_list = re.split(r'[._]+', name)
-        if ('IF' not in name_list[0]) or (len(name_list) < 2):
+        if ('IF' not in name_list[1]) or (len(name_list) < 3):
             return
 
         # key is filename, without extension & pre/post
         key = name_list[0] + '_' + name_list[1] + '_' + name_list[2]
-        if key not in path_dict:
-            path_dict[key] = []
-            path_dict[key].append(name)
-            if prev_key != '':
-                # Dir name is node_data.*
-                dir_name = prev_key
-                subpath = mz_dir + dir_name
-                os.system('mkdir ' + subpath)
+        
+        print("Attempting to start postprocessing")
+        # Dir name is node_data.*
+        mz_dir = './'
+        dir_name = key
+        subpath = mz_dir + dir_name
+        print(subpath)
+        os.system('mkdir ' + subpath)
 
-                # Move all files with this naming convention into new directory
-                # mv should be atomic
-                for f in path_dict[prev_key]:
-                    os.system('mv ' + mz_dir + f + ' ' + subpath + '/' + prev_key)
+        # Move all files with this naming convention into new directory
+        # mv should be atomic
+        print('mv ' + mz_dir + name + ' ' + subpath + '/' + key)
+        os.system('mv ' + path + ' ' + subpath + '/' + key)
 
-                # cp scripts into new directory
-                os.system('cp testing_pipeline.sh ' + subpath + '/test.sh')
-                #os.system('cp concatfiles.sh ./' +  subpath + '/concatfiles.sh')
-                os.system('cp unpacker ./' + subpath + '/unpacker')
-
-                # Code to call shell script with command line arguments
-                subprocess.Popen('./test.sh ' + prev_key + ' ' + sys.argv[1] + ' ' +  sys.argv[2], shell=True, cwd=subpath)
-            prev_key = key
+        # cp scripts into new directory
+        os.system('cp testing_pipeline.sh ' + subpath + '/test.sh')
+        #os.system('cp concatfiles.sh ./' +  subpath + '/concatfiles.sh')
+        os.system('cp unpacker ./' + subpath + '/unpacker')
+        
+        print("Calling shell script")
+        # Code to call shell script with command line arguments
+        subprocess.Popen('./test.sh ' + key + ' ' + 'unneeded' + ' ' + '/home/usrpdata/disk2/mznt_chris/GNSS_SDR_v1-93', shell=True, cwd=subpath)
 
     def do_GET(self):
         self._set_headers()
@@ -69,7 +70,7 @@ class Handler(BaseHTTPRequestHandler):
                 #    data = self.rfile.read(10)
                 f.write(self.rfile.read(length))
             print("Done")
-            #self.file_handler(path)
+            self.file_handler(path)
 
             self.protocol_version = 'HTTP/1.1'
             #self.send_response(201, "Created")
