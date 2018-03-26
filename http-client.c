@@ -24,19 +24,23 @@ static int in_progress;
 static int cancel_flag;
 static pthread_mutex_t send_lock;
 
+static pthread_mutex_t error_lock;
+static sds curl_error_string;
+
 void *send_worker();
 int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
                   curl_off_t ultotal, curl_off_t ulnow);
 int set_global_opts();
 int init_file_upload(curl_off_t f_offset);
 int create_full_path();
+void update_error_string(char *err);
 
 int asynch_send(char *filename, curl_off_t f_offset, char *rem_path) {
     // Check to make sure more than one simultaneous transfer doesn't occur
     pthread_mutex_lock(&send_lock);
     printf("Current upload status: %d\n", in_progress);
     if (in_progress) {
-        fprintf(stderr, "error: attempted to start second transfer\n");
+        update_error_string("Attempted to start second simultaneous transfer\n");
         return -1;
     }
     in_progress = 1;
@@ -44,7 +48,7 @@ int asynch_send(char *filename, curl_off_t f_offset, char *rem_path) {
     
     local_fn = sdsnew(filename);
     remote_path = sdsnew(rem_path);
-    
+
     // Initialize global curl easy struct
     if (init_file_upload(f_offset) < 0) {
     	printf("Init file upload failed.\n");
@@ -101,7 +105,7 @@ void *send_worker() {
         pthread_mutex_lock(&send_lock);
         if(res_code != CURLM_OK && cancel_flag != 1) {
             pthread_mutex_unlock(&send_lock);
-            fprintf(stderr, "error: curl_multi_wait() returned %s\n", curl_multi_strerror(res_code));
+            update_error_string("Curl_multi_wait() error\n");
             
             // Removing handle mid-transfer will abort request
             curl_multi_remove_handle(cm, curl);
@@ -137,7 +141,7 @@ void *send_worker() {
             }
         }
         else {
-            fprintf(stderr, "error: after curl_multi_info_read(), CURLMsg=%d\n", msg->msg);
+            update_error_string("Error after curl_multi_info_read()\n");
         }
     }
     // Cleanup
@@ -163,22 +167,24 @@ int curl_init(char *host, long port) {
     // Realloc treats null pointer as normal malloc
     full_remote_path = NULL;
     
+    // Create empty error string
+    curl_error_string = sdsempty();
+
     // Global curl initialization
     // Not thread safe, must be called once
     curl_global_init(CURL_GLOBAL_ALL);
 
     curl = curl_easy_init();
     if (curl == NULL) {
-        fprintf(stderr, "Curl easy init failed\n");
+        update_error_string("Curl easy_init failed\n");
         return -1;
     }
-    if (set_global_opts() < 0)
-        return -1; 
-    
+    set_global_opts()
+
     // Initialize multi, single
     cm = curl_multi_init();
     if (cm == NULL) {
-        fprintf(stderr, "Curl multi init failed\n");
+        update_error_string("Curl multi_init failed\n");
         return -1;
     }
     
@@ -186,8 +192,10 @@ int curl_init(char *host, long port) {
     curl_progress.curr_upload = 0;
     curl_progress.upload_max = 0;
 
-    // File lock declarations
+    // lock initialization
     pthread_mutex_init(&send_lock, NULL);
+    pthread_mutex_init(&error_lock, NULL);
+
     // Thread flag initialization
     in_progress = 0;
     cancel_flag = 0;
@@ -198,7 +206,7 @@ int curl_init(char *host, long port) {
 int curl_destroy() {
     pthread_mutex_lock(&send_lock);
     if (in_progress) {
-        fprintf(stderr, "error: Cannot destroy, transfer in progress\n");
+        update_error_string("Cannot destroy module, transfer in progress\n");
         return -1;
     }
     pthread_mutex_unlock(&send_lock);
@@ -206,6 +214,7 @@ int curl_destroy() {
     curl_easy_cleanup(curl);
     curl_multi_cleanup(cm);
 
+    sdsfree(curl_error_string);
     return 0;
 }
 
@@ -320,7 +329,7 @@ int init_file_upload(curl_off_t f_offset) {
 
     curr_fd = fopen(local_fn, "rb"); /* open file to upload */ 
     if(!curr_fd) {
-    	printf("Failed to open local file\n");
+        update_error_string("failed to open local file\n");
         return -1; /* can't continue */
     }
 
@@ -329,7 +338,7 @@ int init_file_upload(curl_off_t f_offset) {
     curl_off_t sz = ftell(curr_fd);
     // Seek to offset, if offset small enough
     if(sz < f_offset || fseek(curr_fd, f_offset, SEEK_SET) != 0) {
-        fprintf(stderr, "Failed fseek\n");
+        update_error_string("Fseek failed or offset beyond file size\n");
         return -1;
     }
 
@@ -368,3 +377,20 @@ int create_full_path() {
     return 0;
 }
 
+/*
+    REQUIRES:
+        successful completion of curl_init (for error_lock)
+        null terminated error string as arg
+
+    MODIFIES:
+        curl_error_string, thread safe
+
+    RETURNS:
+        void
+*/
+void update_error_string(char *err) {
+    pthread_mutex_lock(&error_lock);
+    sdsfree(curl_error_string);
+    curl_error_string = sdsnew(err);
+    pthread_mutex_unlock(&error_lock);
+}
