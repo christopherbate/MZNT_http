@@ -31,18 +31,6 @@ int set_global_opts();
 int init_file_upload();
 int create_full_path();
 
-static off_t GetFileSize( int fd ) {
-	// Get the size of the input file.
-	struct stat stat_buf;
-	int res;
-	res = fstat( fd, &stat_buf );
-	if( res < 0 ){
-		UniError("Failed to get file size.");
-	}
-
-	return stat_buf.st_size;
-}
-
 int asynch_send(char *filename, char *rem_path) {
     // Check to make sure more than one simultaneous transfer doesn't occur
     pthread_mutex_lock(&send_lock);
@@ -56,6 +44,15 @@ int asynch_send(char *filename, char *rem_path) {
     
     local_fn = sdsnew(filename);
     remote_path = sdsnew(rem_path);
+    
+    // Initialize global curl easy struct
+    if (init_file_upload() < 0) {
+    	printf("Init file upload failed.\n");
+        return -1;
+    }
+
+    // Add single handle to multi
+    curl_multi_add_handle(cm, curl); 
 
     pthread_t id;
     // Set thread to detached
@@ -89,14 +86,6 @@ void *send_worker() {
     
     printf("Executing upload worker.\n");
 
-    // Initialize global curl easy struct
-    if (init_file_upload() < 0) {
-    	printf("Init file upload failed.\n");
-        return (void*)-1;
-    }
-
-    // Add single handle to multi
-    curl_multi_add_handle(cm, curl); 
     curl_multi_perform(cm, &still_running);
 
     // Perform request
@@ -266,12 +255,12 @@ int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
     myp->curr_upload = ulnow;
     pthread_mutex_unlock(&send_lock);
 
-    /*
+    
     fprintf(stderr, "UP: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
           "  DOWN: %" CURL_FORMAT_CURL_OFF_T " of %" CURL_FORMAT_CURL_OFF_T
           "\r\n",
           ulnow, ultotal, dlnow, dltotal);
-    */
+   
     return 0;
 }
 
@@ -336,7 +325,7 @@ int init_file_upload() {
     }
     
     printf("Full remote path is: %s\n", full_remote_path);
-    printf("Size is: %d\n", file_info.st_size);
+    printf("Size is: %lu\n", (unsigned long)file_info.st_size);
 
     curl_easy_setopt(curl, CURLOPT_URL, full_remote_path);
     /* set where to read from */ 

@@ -1,6 +1,6 @@
 CC=gcc # Setting compiler
 LDFLAGS= -lcurl -lpthread
-CFLAGS= -Wall -Wextra # Specified by writeup
+CFLAGS= -Wall -Wextra -Werror# Specified by writeup
 HEADERS= http-client.h sds.h sdsalloc.h
 
 # Ensures make normally builds, doesn't clean unless specified

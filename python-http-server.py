@@ -1,17 +1,18 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
+import re
 
 class Handler(BaseHTTPRequestHandler):
     path_dict = {}
     prev_key = ''
-    
-    def file_handler(path):
+
+    def file_handler(self,path):
         name = re.split(r'[/]+', path)[-1]
         # Split name on both periods and underscores
         name_list = re.split(r'[._]+', name)
-        if 'IF' not in name_list[0] or len(name_list) < 2:
-            continue
-        
+        if ('IF' not in name_list[0]) or (len(name_list) < 2):
+            return
+
         # key is filename, without extension & pre/post
         key = name_list[0] + '_' + name_list[1] + '_' + name_list[2]
         if key not in path_dict:
@@ -22,30 +23,30 @@ class Handler(BaseHTTPRequestHandler):
                 dir_name = prev_key
                 subpath = mz_dir + dir_name
                 os.system('mkdir ' + subpath)
-                
+
                 # Move all files with this naming convention into new directory
                 # mv should be atomic
                 for f in path_dict[prev_key]:
                     os.system('mv ' + mz_dir + f + ' ' + subpath + '/' + prev_key)
-                
+
                 # cp scripts into new directory
                 os.system('cp testing_pipeline.sh ' + subpath + '/test.sh')
                 #os.system('cp concatfiles.sh ./' +  subpath + '/concatfiles.sh')
                 os.system('cp unpacker ./' + subpath + '/unpacker')
-                
+
                 # Code to call shell script with command line arguments
                 subprocess.Popen('./test.sh ' + prev_key + ' ' + sys.argv[1] + ' ' +  sys.argv[2], shell=True, cwd=subpath)
             prev_key = key
 
-def do_GET(self):
-    self._set_headers()
-    self.wfile.write("<html><body><h1>hi!</h1></body></html>")
-    
+    def do_GET(self):
+        self._set_headers()
+        self.wfile.write("<html><body><h1>hi!</h1></body></html>")
+
     def do_POST(self):
         # Doesn't do anything with posted data
         self._set_headers()
         self.wfile.write("<html><body><h1>POST!</h1></body></html>")
-    
+
     def do_PUT(self):
         path = self.path
         if path.endswith('/'):
@@ -54,14 +55,22 @@ def do_GET(self):
             return
         else:
             path = '.' + path
+            print("Got resource for path: " + str(path))
             length = int(self.headers['Content-Length'])
-            
+            print("Length is: " + str(length))
+
             os.makedirs(os.path.dirname(path), exist_ok=True)
+            print("Attempting to write file.")
             with open(path, 'wb') as f:
-                f.write(self.rfile.read(length))
-        
-            file_handler(path)
-            
+                data = self.rfile.read(10)
+                while(data):
+                    print(data)
+                    f.write(data)
+                    data = self.rfile.read(10)
+                #f.write(self.rfile.read(length))
+            print("Done")
+            #self.file_handler(path)
+
             self.protocol_version = 'HTTP/1.1'
             #self.send_response(201, "Created")
             #self.handle_expect_100()
@@ -69,15 +78,15 @@ def do_GET(self):
             self.send_response(200) #create header
             #self.send_header("Content-Length", str(len(response)))
             self.send_header("Content-Length", 0)
-    self.end_headers()
+            self.end_headers()
 
-#self.wfile.write(response) #send response
+    #self.wfile.write(response) #send response
 
 def run(server_class=HTTPServer, handler_class=Handler, port=1337):
-    server_address = ('', port)
-    httpd = server_class(server_address, handler_class)
-    print('Starting httpd...')
-    httpd.serve_forever()
+        server_address = ('', port)
+        httpd = server_class(server_address, handler_class)
+        print('Starting httpd...')
+        httpd.serve_forever()
 
 if __name__ == "__main__":
     from sys import argv
@@ -85,4 +94,3 @@ if __name__ == "__main__":
         run(port=int(argv[1]))
     else:
         run()
-
