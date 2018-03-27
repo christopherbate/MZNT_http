@@ -168,8 +168,7 @@ int curl_init(char *host, long port) {
     full_remote_path = NULL;
     
     // Create empty error string
-    curl_error_string = sdsempty();
-
+    curl_error_string = sdsnew("No error");
     // Global curl initialization
     // Not thread safe, must be called once
     curl_global_init(CURL_GLOBAL_ALL);
@@ -179,7 +178,7 @@ int curl_init(char *host, long port) {
         update_error_string("Curl easy_init failed\n");
         return -1;
     }
-    set_global_opts()
+    set_global_opts();
 
     // Initialize multi, single
     cm = curl_multi_init();
@@ -375,6 +374,15 @@ int create_full_path() {
     full_remote_path = sdscat(full_remote_path, remote_path);
     printf("Full remote: %s\n", full_remote_path);
     return 0;
+}
+
+char *get_error_string() {
+    char *ret;
+    pthread_mutex_lock(&error_lock);
+    ret = curl_error_string;
+    pthread_mutex_unlock(&error_lock);
+
+    return ret;
 }
 
 /*

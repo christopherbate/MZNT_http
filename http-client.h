@@ -99,6 +99,16 @@ curl_off_t status_send();
 */
 int cancel_send();
 
+/*
+    REQUIRED:
+        Successful completion of curl_init
 
+    MODIFIES:
+        N/A
+    
+    RETURNS:
+        pointer to static error string
+*/
+char* get_error_string();
 
 #endif /* http_client_h */
