@@ -1,4 +1,15 @@
 #include "http-client.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <string.h>
+#include <curl/curl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <string>
+
+using namespace std;
 
 struct progress {
 	double lastruntime;
@@ -13,21 +24,21 @@ static CURL *curl;
 
 static FILE *curr_fd;
 
-static sds local_fn;
-static sds remote_path;
+static string local_fn;
+static string remote_path;
 
 static int remote_port;
 static char *remote_base_url;
-static sds full_remote_path;
+static string full_remote_path;
 
 static int in_progress;
 static int cancel_flag;
 static pthread_mutex_t send_lock;
 
 static pthread_mutex_t error_lock;
-static sds curl_error_string;
+static string curl_error_string;
 
-void *send_worker();
+void *send_worker(void*);
 int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
                   curl_off_t ultotal, curl_off_t ulnow);
 int set_global_opts();
@@ -46,8 +57,8 @@ int asynch_send(char *filename, curl_off_t f_offset, char *rem_path) {
     in_progress = 1;
     pthread_mutex_unlock(&send_lock);
     
-    local_fn = sdsnew(filename);
-    remote_path = sdsnew(rem_path);
+    local_fn = string(filename);
+    remote_path = rem_path;
 
     // Initialize global curl easy struct
     if (init_file_upload(f_offset) < 0) {
@@ -87,7 +98,7 @@ int asynch_send(char *filename, curl_off_t f_offset, char *rem_path) {
     RETURNS:
         -1 if exiting prematurely. Detatched thread, returns will not be received
 */
-void *send_worker() {
+void *send_worker(void*) {
     CURLMsg *msg=NULL;
     CURLcode res;
     int still_running=0, msgs_left=0;
@@ -148,12 +159,9 @@ void *send_worker() {
     curl_multi_remove_handle(cm, curl);
     
     fclose(curr_fd);
-    sdsfree(full_remote_path);
-    sdsfree(local_fn);
     pthread_mutex_lock(&send_lock);
     in_progress = 0;
     cancel_flag = 0;
-    sdsfree(remote_path);
     pthread_mutex_unlock(&send_lock);
 
     printf("thread done\n");
@@ -165,10 +173,10 @@ int curl_init(char *host, long port) {
     remote_base_url = host;
     remote_port = port;
     // Realloc treats null pointer as normal malloc
-    full_remote_path = NULL;
+    full_remote_path = string("");
     
     // Create empty error string
-    curl_error_string = sdsnew("No error");
+    curl_error_string = string("No error");
     // Global curl initialization
     // Not thread safe, must be called once
     curl_global_init(CURL_GLOBAL_ALL);
@@ -213,7 +221,6 @@ int curl_destroy() {
     curl_easy_cleanup(curl);
     curl_multi_cleanup(cm);
 
-    sdsfree(curl_error_string);
     return 0;
 }
 
@@ -326,7 +333,7 @@ int init_file_upload(curl_off_t f_offset) {
     create_full_path(); 
     printf("Local filename is %s\n", local_fn);
 
-    curr_fd = fopen(local_fn, "rb"); /* open file to upload */ 
+    curr_fd = fopen(local_fn.c_str(), "rb"); /* open file to upload */
     if(!curr_fd) {
         update_error_string("failed to open local file\n");
         return -1; /* can't continue */
@@ -370,14 +377,14 @@ int init_file_upload(curl_off_t f_offset) {
         -1 for bad realloc
 */
 int create_full_path() {
-    full_remote_path = sdsnew(remote_base_url);//strcpy(tmp, remote_base_url);
-    full_remote_path = sdscat(full_remote_path, remote_path);
+    full_remote_path = remote_base_url;//strcpy(tmp, remote_base_url);
+    full_remote_path = full_remote_path + remote_path;
     printf("Full remote: %s\n", full_remote_path);
     return 0;
 }
 
-char *get_error_string() {
-    char *ret;
+string get_error_string() {
+    string ret;
     pthread_mutex_lock(&error_lock);
     ret = curl_error_string;
     pthread_mutex_unlock(&error_lock);
@@ -398,7 +405,6 @@ char *get_error_string() {
 */
 void update_error_string(char *err) {
     pthread_mutex_lock(&error_lock);
-    sdsfree(curl_error_string);
-    curl_error_string = sdsnew(err);
+    curl_error_string = string(err);
     pthread_mutex_unlock(&error_lock);
 }

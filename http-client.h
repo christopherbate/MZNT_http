@@ -1,15 +1,10 @@
 #ifndef http_client_h
 #define http_client_h
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <string.h>
 #include <curl/curl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <pthread.h>
-#include "sds.h"
+#include <string>
+
+//#include "sds.h"
 
 #define MAX_WAIT_MSECS 30*1000
 #define MINIMAL_PROGRESS_FUNCTIONALITY_INTERVAL 3
@@ -109,6 +104,6 @@ int cancel_send();
     RETURNS:
         pointer to static error string
 */
-char* get_error_string();
+std::string get_error_string();
 
 #endif /* http_client_h */
