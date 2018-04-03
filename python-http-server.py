@@ -70,7 +70,7 @@ class Handler(BaseHTTPRequestHandler):
                 #    data = self.rfile.read(10)
                 f.write(self.rfile.read(length))
             print("Done")
-            self.file_handler(path)
+            #self.file_handler(path)
 
             self.protocol_version = 'HTTP/1.1'
             #self.send_response(201, "Created")
