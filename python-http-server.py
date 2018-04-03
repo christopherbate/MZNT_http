@@ -1,4 +1,6 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
+import threading
 import subprocess
 import os
 import re
@@ -83,15 +85,10 @@ class Handler(BaseHTTPRequestHandler):
 
     #self.wfile.write(response) #send response
 
-def run(server_class=HTTPServer, handler_class=Handler, port=1337):
-        server_address = ('', port)
-        httpd = server_class(server_address, handler_class)
-        print('Starting httpd...')
-        httpd.serve_forever()
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """Handle requests in a separate thread."""
 
 if __name__ == "__main__":
-    from sys import argv
-    if len(argv) == 2:
-        run(port=int(argv[1]))
-    else:
-        run()
+    server = ThreadedHTTPServer(('localhost', 1337), Handler)
+    print('Starting server, use <Ctrl-C> to stop')
+    server.serve_forever()
