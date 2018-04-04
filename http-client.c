@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <string>
+#include <iostream>
 
 using namespace std;
 
@@ -28,10 +29,10 @@ static string local_fn;
 static string remote_path;
 
 static int remote_port;
-static char *remote_base_url;
+static string remote_base_url;
 static string full_remote_path;
 
-static int in_progress;
+static bool in_progress = false;
 static int cancel_flag;
 static pthread_mutex_t send_lock;
 
@@ -42,30 +43,29 @@ void *send_worker(void*);
 int info_callback(void *p, curl_off_t dltotal, curl_off_t dlnow,
                   curl_off_t ultotal, curl_off_t ulnow);
 int set_global_opts();
-int init_file_upload(curl_off_t f_offset);
+int init_file_upload(curl_off_t f_offset, curl_off_t numBytes);
 int create_full_path();
-void update_error_string(char *err);
+void update_error_string(const char *err);
 
-int asynch_send(char *filename, curl_off_t f_offset, char *rem_path) {
+int asynch_send(const char *filename, curl_off_t f_offset, curl_off_t numBytes, const char *rem_path) {
     // Check to make sure more than one simultaneous transfer doesn't occur
     pthread_mutex_lock(&send_lock);
-    printf("Current upload status: %d\n", in_progress);
-    if (in_progress) {
+
+    if(in_progress) {
+        pthread_mutex_unlock(&send_lock);
         update_error_string("Attempted to start second simultaneous transfer\n");
+        cerr << "Transfer already in progress, canceling." << endl;
         return -1;
     }
-    in_progress = 1;
-    pthread_mutex_unlock(&send_lock);
     
     local_fn = string(filename);
-    remote_path = rem_path;
+    remote_path = string(rem_path);
 
     // Initialize global curl easy struct
-    if (init_file_upload(f_offset) < 0) {
-    	printf("Init file upload failed.\n");
-        
-        pthread_mutex_lock(&send_lock);
-        in_progress = 0;
+    if (init_file_upload(f_offset, numBytes) < 0) {
+        cerr << "Init file upload failed." << endl;
+
+        in_progress = false;
         pthread_mutex_unlock(&send_lock);
 
         return -1;
@@ -80,8 +80,14 @@ int asynch_send(char *filename, curl_off_t f_offset, char *rem_path) {
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
+    in_progress = true;
+    pthread_mutex_unlock(&send_lock);
+
+    cout << "Spawning upload worker." << endl;
+
     // Create thread
     pthread_create(&id, &attr, send_worker, NULL);  
+
     return 0; 
 }
 
@@ -124,7 +130,7 @@ void *send_worker(void*) {
             // Cleanup
             fclose(curr_fd);
             pthread_mutex_lock(&send_lock);
-            in_progress = 0;
+            in_progress = false;
             cancel_flag = 0;
             pthread_mutex_unlock(&send_lock);
             return (void*)-1;
@@ -160,7 +166,7 @@ void *send_worker(void*) {
     
     fclose(curr_fd);
     pthread_mutex_lock(&send_lock);
-    in_progress = 0;
+    in_progress = false;
     cancel_flag = 0;
     pthread_mutex_unlock(&send_lock);
 
@@ -169,14 +175,16 @@ void *send_worker(void*) {
     pthread_exit(NULL);
 }
 
-int curl_init(char *host, long port) {
-    remote_base_url = host;
+int curl_init(const char *host, long port) {
+    remote_base_url = string(host);
     remote_port = port;
+
     // Realloc treats null pointer as normal malloc
-    full_remote_path = string("");
+    //full_remote_path = string("");
     
     // Create empty error string
     curl_error_string = string("No error");
+
     // Global curl initialization
     // Not thread safe, must be called once
     curl_global_init(CURL_GLOBAL_ALL);
@@ -204,7 +212,7 @@ int curl_init(char *host, long port) {
     pthread_mutex_init(&error_lock, NULL);
 
     // Thread flag initialization
-    in_progress = 0;
+    in_progress = false;
     cancel_flag = 0;
 
     return 0;
@@ -218,6 +226,9 @@ int curl_destroy() {
     }
     pthread_mutex_unlock(&send_lock);
     
+    pthread_mutex_destroy(&send_lock);
+    pthread_mutex_destroy(&error_lock);
+
     curl_easy_cleanup(curl);
     curl_multi_cleanup(cm);
 
@@ -329,11 +340,14 @@ int set_global_opts() {
         0 on success
         -1 on bad file open, offset greater than file size
 */
-int init_file_upload(curl_off_t f_offset) {
-    create_full_path(); 
-    printf("Local filename is %s\n", local_fn);
+int init_file_upload(curl_off_t f_offset, curl_off_t numBytes) {
+	full_remote_path = remote_base_url + remote_path;
+
+	printf("Full remote: %s\n", full_remote_path.c_str());
+    printf("Local filename is %s\n", local_fn.c_str());
 
     curr_fd = fopen(local_fn.c_str(), "rb"); /* open file to upload */
+
     if(!curr_fd) {
         update_error_string("failed to open local file\n");
         return -1; /* can't continue */
@@ -342,25 +356,30 @@ int init_file_upload(curl_off_t f_offset) {
     // Get file size
     fseek(curr_fd, 0L, SEEK_END);
     curl_off_t sz = ftell(curr_fd);
+
     // Seek to offset, if offset small enough
     if(sz < f_offset || fseek(curr_fd, f_offset, SEEK_SET) != 0) {
         update_error_string("Fseek failed or offset beyond file size\n");
         return -1;
     }
 
-    printf("Full remote path is: %s\n", full_remote_path); 
+    printf("Full remote path is: %s\n", full_remote_path.c_str());
     printf("Size is: %lu\n", (unsigned long)(sz - f_offset));
 
-    curl_easy_setopt(curl, CURLOPT_URL, full_remote_path);
+    curl_easy_setopt(curl, CURLOPT_URL, full_remote_path.c_str());
     /* set where to read from */ 
     curl_easy_setopt(curl, CURLOPT_READDATA, curr_fd);
     /* and give the size of the upload (optional) */ 
-    curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, (curl_off_t)(sz - f_offset));
+    if(numBytes > (sz-f_offset)) {
+    	return -1;
+    }
+    curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, numBytes);
 
     // Set upload max value from file size
-    pthread_mutex_lock(&send_lock);
+    // We already acquired a lock by this point, no need to over complicate.
+    //pthread_mutex_lock(&send_lock);
     curl_progress.upload_max = (curl_off_t)sz;
-    pthread_mutex_unlock(&send_lock);
+    //pthread_mutex_unlock(&send_lock);
     return 0;
 }
 
@@ -377,9 +396,7 @@ int init_file_upload(curl_off_t f_offset) {
         -1 for bad realloc
 */
 int create_full_path() {
-    full_remote_path = remote_base_url;//strcpy(tmp, remote_base_url);
-    full_remote_path = full_remote_path + remote_path;
-    printf("Full remote: %s\n", full_remote_path);
+
     return 0;
 }
 
@@ -403,7 +420,7 @@ string get_error_string() {
     RETURNS:
         void
 */
-void update_error_string(char *err) {
+void update_error_string(const char *err) {
     pthread_mutex_lock(&error_lock);
     curl_error_string = string(err);
     pthread_mutex_unlock(&error_lock);

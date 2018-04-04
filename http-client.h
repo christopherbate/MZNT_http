@@ -23,7 +23,7 @@
         0 on success
         -1 if other transfer already in progress, failed file init
 */
-int asynch_send(char *filename, curl_off_t f_offset, char *rem_path);
+int asynch_send(const char *filename, curl_off_t f_offset, curl_off_t numBytes, const char *rem_path);
 
 /*
     REQUIRES:
@@ -52,7 +52,7 @@ int asynch_send(char *filename, curl_off_t f_offset, char *rem_path);
         0 on success
         -1 given failed cm, curl initialization
 */
-int curl_init(char *host, long port);
+int curl_init(const char *host, long port);
 
 /*
     REQUIRES:
