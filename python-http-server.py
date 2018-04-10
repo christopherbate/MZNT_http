@@ -26,8 +26,6 @@ client.on_message = on_message
 client.connect( "gnssfast.colorado.edu" , 5554, 60)
 client.loop_start()
 
-
-
 class Handler(BaseHTTPRequestHandler):
     def file_handler(self,path):
         print("In file handler")
