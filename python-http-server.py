@@ -4,7 +4,7 @@ import threading
 import subprocess
 import os
 import re
-#import paho.mqtt.client as mqtt
+import paho.mqtt.client as mqtt
 
 # Callback when disconnected from MQTT Broker
 def on_disconnect( client, userdata,rc ):
@@ -19,12 +19,12 @@ def on_message(client, userdata, msg):
 def on_connect(client, userdata, msg, rc):
     print("Connected on MQTT")
 
-"""client = mqtt.Client()
+client = mqtt.Client()
 client.username_pw_set("mznt", "rj39SZSz")
 client.on_connect = on_connect
 client.on_message = on_message
 client.connect( "gnssfast.colorado.edu" , 5554, 60)
-client.loop_start()"""
+client.loop_start()
 
 class Handler(BaseHTTPRequestHandler):
     def file_handler(self,path):
