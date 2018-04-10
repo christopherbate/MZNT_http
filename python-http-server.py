@@ -68,7 +68,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
 
             #self.wfile.write(response) #send response
-            #client.publish( "files", path, 0 )
+            client.publish( "files", path, 0 )
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """Handle requests in a separate thread."""
