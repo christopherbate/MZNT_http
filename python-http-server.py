@@ -4,42 +4,33 @@ import threading
 import subprocess
 import os
 import re
+import paho.mqtt.client as mqtt
+
+# Callback when disconnected from MQTT Broker
+def on_disconnect( client, userdata,rc ):
+    if( rc != 0):
+        print("HTTP Server disconnected unexpectedly from MQTT")
+
+# The callback for when a PUBLISH message is received from the server.
+def on_message(client, userdata, msg):
+    # Pass message to the LeaderController
+    print("HTTP Server received message.")
+
+def on_connect(client, userdata, msg, rc):
+    print("Connected on MQTT")
+
+client = mqtt.Client()
+client.username_pw_set("mznt", "rj39SZSz")
+client.on_connect = on_connect
+client.on_message = on_message
+client.connect( "gnssfast.colorado.edu" , 5554, 60)
+client.loop_start()
+
+
 
 class Handler(BaseHTTPRequestHandler):
     def file_handler(self,path):
         print("In file handler")
-        print(path)
-        name = re.split(r'[/]+', path)[-1]
-        print(name)
-        # Split name on both periods and underscores
-        name_list = re.split(r'[._]+', name)
-        if ('IF' not in name_list[1]) or (len(name_list) < 3):
-            return
-
-        # key is filename, without extension & pre/post
-        key = name_list[0] + '_' + name_list[1] + '_' + name_list[2]
-        
-        print("Attempting to start postprocessing")
-        # Dir name is node_data.*
-        mz_dir = './'
-        dir_name = key
-        subpath = mz_dir + dir_name
-        print(subpath)
-        os.system('mkdir ' + subpath)
-
-        # Move all files with this naming convention into new directory
-        # mv should be atomic
-        print('mv ' + mz_dir + name + ' ' + subpath + '/' + key)
-        os.system('mv ' + path + ' ' + subpath + '/' + key)
-
-        # cp scripts into new directory
-        os.system('cp testing_pipeline.sh ' + subpath + '/test.sh')
-        #os.system('cp concatfiles.sh ./' +  subpath + '/concatfiles.sh')
-        os.system('cp unpacker ./' + subpath + '/unpacker')
-        
-        print("Calling shell script")
-        # Code to call shell script with command line arguments
-        subprocess.Popen('./test.sh ' + key + ' ' + 'unneeded' + ' ' + '/home/usrpdata/disk2/mznt_chris/GNSS_SDR_v1-93', shell=True, cwd=subpath)
 
     def do_GET(self):
         self._set_headers()
@@ -65,11 +56,6 @@ class Handler(BaseHTTPRequestHandler):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             print("Attempting to write file.")
             with open(path, 'wb') as f:
-                #data = self.rfile.read(10)
-                #while(data):
-                #    print(data)
-                #    f.write(data)
-                #    data = self.rfile.read(10)
                 f.write(self.rfile.read(length))
             print("Done")
             #self.file_handler(path)
@@ -83,7 +69,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", 0)
             self.end_headers()
 
-    #self.wfile.write(response) #send response
+            #self.wfile.write(response) #send response
+            client.publish( "files", path, 0 )
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """Handle requests in a separate thread."""
@@ -92,3 +79,4 @@ if __name__ == "__main__":
     server = ThreadedHTTPServer(('localhost', 1337), Handler)
     print('Starting server, use <Ctrl-C> to stop')
     server.serve_forever()
+    client.loop_stop()
