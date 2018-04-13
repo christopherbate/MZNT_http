@@ -27,9 +27,6 @@ client.connect( "gnssfast.colorado.edu" , 5554, 60)
 client.loop_start()
 
 class Handler(BaseHTTPRequestHandler):
-    def file_handler(self,path):
-        print("In file handler")
-
     def do_GET(self):
         self._set_headers()
         self.wfile.write("<html><body><h1>hi!</h1></body></html>")
@@ -56,21 +53,15 @@ class Handler(BaseHTTPRequestHandler):
             with open(path, 'wb') as f:
                 f.write(self.rfile.read(length))
             print("Done")
-            #self.file_handler(path)
 
             self.protocol_version = 'HTTP/1.1'
-            #self.send_response(201, "Created")
-            #self.handle_expect_100()
-            #response = bytes("This is the response.", "utf-8")
-            self.send_response(200) #create header
-            #self.send_header("Content-Length", str(len(response)))
+            self.send_response(201,"created") #create header
             self.send_header("Content-Length", 0)
             self.end_headers()
 
-            #self.wfile.write(response) #send response
             client.publish( "files", path, 0 )
 
-class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+class ThreadedHTTPServer(HTTPServer):
     """Handle requests in a separate thread."""
 
 if __name__ == "__main__":
