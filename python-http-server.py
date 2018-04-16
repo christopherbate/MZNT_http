@@ -20,7 +20,7 @@ def on_connect(client, userdata, msg, rc):
     print("Connected on MQTT")
 
 client = mqtt.Client()
-client.username_pw_set("mznt", "rj39SZSz")
+client.username_pw_set("mznt", "")
 client.on_connect = on_connect
 client.on_message = on_message
 client.connect( "gnssfast.colorado.edu" , 5554, 60)
